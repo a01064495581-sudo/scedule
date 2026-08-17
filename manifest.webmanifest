@@ -1,0 +1,17 @@
+{
+  "name": "스케줄 · 학교 일정",
+  "short_name": "스케줄",
+  "description": "급식, 시간표, 수행평가, 정기시험, 건의사항을 한 화면에서",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f3f8",
+  "theme_color": "#5b5bd6",
+  "icons": [
+    { "src": "./assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "./assets/icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

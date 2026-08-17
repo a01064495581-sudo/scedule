@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="description" content="영동고 급식·시간표·수행평가·정기시험·건의사항을 한 화면에서" />
+  <meta name="theme-color" content="#f2f3f8" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0a0c12" media="(prefers-color-scheme: dark)" />
+  <meta name="format-detection" content="telephone=no" />
+  <!-- 홈 화면에 추가했을 때 전체화면 앱처럼 -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="스케줄" />
+  <title>스케줄 · 학교 일정</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./assets/icon-180.png" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+  <link rel="stylesheet" href="./assets/css/style.css" />
+  <script>
+    // 첫 페인트 전에 테마를 확정해 깜빡임을 막는다.
+    (function () {
+      var pref = localStorage.getItem('scedule.theme') || 'auto';
+      var dark = pref === 'dark' ||
+        (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })();
+  </script>
+</head>
+<body data-section="today">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">📅</div>
+        <div class="brand__text">
+          <strong>스케줄</strong>
+          <span id="brandSchool">학교를 설정해 주세요</span>
+        </div>
+      </div>
+      <nav class="nav" id="nav" aria-label="주요 메뉴"></nav>
+      <div class="sidebar__foot">
+        <button class="theme-toggle" id="themeToggle" type="button">
+          <span class="theme-toggle__icon" aria-hidden="true"></span>
+          <span class="theme-toggle__label">테마</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar" id="topbar">
+        <div class="topbar__titles">
+          <p class="topbar__date" id="topbarDate"></p>
+          <h1 class="topbar__title" id="topbarTitle">오늘</h1>
+        </div>
+        <div class="topbar__actions" id="topbarActions"></div>
+      </header>
+      <div class="view" id="view" role="region" aria-live="polite"></div>
+    </main>
+
+    <nav class="tabbar" id="tabbar" aria-label="화면 이동"></nav>
+  </div>
+
+  <button class="fab" id="fab" type="button" hidden></button>
+
+  <dialog class="modal" id="modal" aria-labelledby="modalTitle">
+    <form method="dialog" class="modal__inner" id="modalForm">
+      <div class="modal__grip" aria-hidden="true"></div>
+      <header class="modal__head">
+        <h2 id="modalTitle">제목</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="modal__body" id="modalBody"></div>
+      <footer class="modal__foot" id="modalFoot"></footer>
+    </form>
+  </dialog>
+
+  <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
+
+  <script type="module" src="./assets/js/app.js"></script>
+</body>
+</html>
