@@ -67,3 +67,9 @@ export function getTimetable(opts) {
   if (!state.school) return Promise.resolve(null);
   return neis.fetchTimetable(state.school, opts, state.neisKey);
 }
+
+/** 학급 목록 (학년·반 선택용) */
+export function getClasses(year) {
+  if (!state.school) return Promise.resolve([]);
+  return neis.fetchClasses(state.school, year, state.neisKey);
+}

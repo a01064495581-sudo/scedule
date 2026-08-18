@@ -14,6 +14,18 @@ export const DEFAULT_SCHOOL = {
   kindName: '고등학교',
 };
 
+/** 관리자 패널 주소 — 이 12자리를 아는 사람만 설정 화면에 들어올 수 있다.
+ *  (완전한 보안은 아니다. 코드가 공개 저장소에 있으므로 '숨김'에 가깝다.) */
+export const ADMIN_CODE = '688219355416';
+const ADMIN_KEY = 'scedule.admin';
+
+export const isAdmin = () => localStorage.getItem(ADMIN_KEY) === '1';
+
+export function setAdmin(on) {
+  if (on) localStorage.setItem(ADMIN_KEY, '1');
+  else localStorage.removeItem(ADMIN_KEY);
+}
+
 const randomId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
 const defaults = () => ({

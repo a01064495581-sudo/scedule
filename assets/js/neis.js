@@ -113,13 +113,15 @@ export const ALLERGY = {
 const timetableService = (kind) =>
   ({ els: 'elsTimetable', mis: 'misTimetable', his: 'hisTimetable', sps: 'spsTimetable' }[kind] || 'hisTimetable');
 
-/** 나이스 시간표 조회 (학교가 입력해 둔 경우에만 데이터가 있다) */
-export async function fetchTimetable(school, { grade, classNm, year, semester, from, to }, key) {
+/** 나이스 시간표 조회 (학교가 입력해 둔 경우에만 데이터가 있다)
+ *
+ * 학년도·학기는 넘기지 않는다. 날짜 범위만 주면 나이스가 알아서 해당 학기 것을 돌려주므로,
+ * 방학 전후로 학기를 잘못 지정해 빈 결과를 받는 일이 없다.
+ */
+export async function fetchTimetable(school, { grade, classNm, from, to }, key) {
   const { rows, truncated } = await call(timetableService(school.kind), {
     ATPT_OFCDC_SC_CODE: school.atptCode,
     SD_SCHUL_CODE: school.sdCode,
-    AY: String(year),
-    SEM: String(semester),
     GRADE: String(grade),
     CLASS_NM: String(classNm),
     TI_FROM_YMD: from,
@@ -128,13 +130,41 @@ export async function fetchTimetable(school, { grade, classNm, year, semester, f
 
   return {
     truncated,
-    lessons: rows.map((r) => ({
-      date: r.ALL_TI_YMD,
-      period: Number(r.PERIO),
-      subject: (r.ITRT_CNT || '').trim(),
-      room: (r.CLRM_NM || '').trim(),
-    })),
+    lessons: rows.map((r) => {
+      // 고교는 ITRT_CNTNT, 일부 급별·구버전 응답은 ITRT_CNT 를 쓴다.
+      const subject = String(r.ITRT_CNTNT ?? r.ITRT_CNT ?? '').trim();
+      const room = String(r.CLRM_NM ?? '').trim();
+      return {
+        date: r.ALL_TI_YMD,
+        period: Number(r.PERIO),
+        subject,
+        // 교실명이 반 번호와 같으면(=자기 교실) 굳이 표시하지 않는다.
+        room: room && room !== String(r.CLASS_NM) ? room : '',
+        year: r.AY,
+        semester: r.SEM,
+      };
+    }).filter((l) => l.subject),
   };
+}
+
+/** 학급 목록 (학년·반 선택용) */
+export async function fetchClasses(school, year, key) {
+  const { rows } = await call('classInfo', {
+    ATPT_OFCDC_SC_CODE: school.atptCode,
+    SD_SCHUL_CODE: school.sdCode,
+    AY: String(year),
+  }, key);
+
+  const seen = new Set();
+  return rows
+    .map((r) => ({ grade: String(r.GRADE), classNm: String(r.CLASS_NM) }))
+    .filter((c) => {
+      const k = `${c.grade}-${c.classNm}`;
+      if (seen.has(k) || !c.grade || !c.classNm) return false;
+      seen.add(k);
+      return true;
+    })
+    .sort((a, b) => Number(a.grade) - Number(b.grade) || Number(a.classNm) - Number(b.classNm));
 }
 
 /** 학사일정 조회 — { events, truncated } 반환 */

@@ -1,5 +1,8 @@
 /* 설정 — 학교 검색, 학년/반, 나이스 인증키, 테마, 백업/복원 */
-import { state, save, update, exportJSON, importJSON, resetAll, getThemePref, setThemePref } from '../store.js';
+import {
+  ADMIN_CODE, state, save, update, exportJSON, importJSON, resetAll,
+  getThemePref, setAdmin, setThemePref,
+} from '../store.js';
 import { clearCache } from '../data.js';
 import { searchSchool } from '../neis.js';
 import { listSuggestions } from '../board.js';
@@ -7,13 +10,26 @@ import { card, confirmModal } from '../ui.js';
 import { el, esc, icon, toast } from '../utils.js';
 
 export default {
-  title: '설정',
+  title: '관리자 패널',
 
   render(root) {
     const s = state.school;
     const theme = getThemePref();
 
     root.innerHTML = `
+      <section class="card card--accent">
+        <div class="sg-hero__label">${icon.lock} 관리자 패널</div>
+        <p style="margin-top:6px;font-size:14px;line-height:1.5">
+          이 화면은 아래 주소를 아는 사람만 들어올 수 있어요. 학생들 화면에는 보이지 않습니다.
+        </p>
+        <p class="mono" style="margin-top:10px;padding:9px 12px;border-radius:12px;
+           background:rgba(255,255,255,.2);font-size:13px;word-break:break-all">#/${ADMIN_CODE}</p>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn--sm" id="adminCopy" type="button">주소 복사</button>
+          <button class="btn btn--sm" id="adminLock" type="button">이 기기에서 관리자 끄기</button>
+        </div>
+      </section>
+
       ${card('학교', `
         <div class="field">
           <label for="schoolQuery">학교 검색</label>
@@ -114,6 +130,25 @@ export default {
 
 function bind(root) {
   const rerender = () => document.dispatchEvent(new CustomEvent('scedule:rerender'));
+
+  /* 관리자 */
+  el('#adminCopy')?.addEventListener('click', async () => {
+    const url = `${location.origin}${location.pathname}#/${ADMIN_CODE}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('관리자 주소를 복사했습니다.');
+    } catch {
+      toast(url);   // 클립보드가 막힌 브라우저에서는 화면에 띄워 준다
+    }
+  });
+
+  el('#adminLock')?.addEventListener('click', () => {
+    confirmModal('이 기기에서 관리자 모드를 끕니다. 다시 들어오려면 관리자 주소가 필요해요.', () => {
+      setAdmin(false);
+      location.hash = '#/today';
+      toast('관리자 모드를 껐습니다.');
+    }, { title: '관리자 모드 끄기', yes: '끄기' });
+  });
 
   /* 학교 검색 */
   const doSearch = async () => {
