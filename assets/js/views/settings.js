@@ -5,7 +5,7 @@ import {
 } from '../store.js';
 import { clearCache } from '../data.js';
 import { searchSchool } from '../neis.js';
-import { listSuggestions } from '../board.js';
+import { checkAdminKey, claimAdminKey, pull, pushContent } from '../server.js';
 import { card, confirmModal } from '../ui.js';
 import { el, esc, icon, toast } from '../utils.js';
 
@@ -72,23 +72,37 @@ export default {
           </span>
         </div>`)}
 
-      ${card('건의사항 공유 게시판', `
+      ${card('공용 서버 (반 전체 공유)', `
         <div class="field">
-          <label for="boardUrl">웹앱 주소 (선택)</label>
+          <label for="boardUrl">Apps Script 웹앱 주소</label>
           <input class="input" id="boardUrl" value="${esc(state.boardUrl || '')}" inputmode="url"
             placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
           <span class="hint">
-            비워 두면 건의가 <b>이 기기에만</b> 저장됩니다. 저장소의
-            <code>backend/apps-script.gs</code> 를 구글 Apps Script 웹앱으로 배포한 뒤 주소를 붙여넣으면
-            반 전체가 같은 건의 목록과 좋아요를 보게 됩니다.
+            저장소의 <code>backend/apps-script.gs</code> 를 구글 Apps Script 웹앱으로 배포하고 주소를 넣으세요.
+            <b>이 주소가 없으면 시간표·시험·노트가 이 기기에만 저장되어 친구들에게는 보이지 않습니다.</b>
           </span>
         </div>
-        <div class="setting-row" style="margin-top:6px">
+
+        <div class="field" style="margin-top:14px">
+          <label for="adminKey">관리자 키</label>
+          <input class="input" id="adminKey" type="password" value="${esc(state.adminKey || '')}"
+            placeholder="6자 이상, 서버 수정 권한" autocomplete="off">
+          <span class="hint">
+            서버에 처음 등록한 키가 관리자 키가 됩니다. 이 키가 있어야 시간표·시험·노트를 수정할 수 있어요.
+            학생 기기에는 넣지 마세요.
+          </span>
+        </div>
+
+        <div class="setting-row" style="margin-top:8px">
           <div class="setting-row__text">
             <strong>${state.boardUrl ? '공유 모드' : '이 기기 전용 모드'}</strong>
-            <span>${state.boardUrl ? '반 전체가 같은 건의를 봅니다.' : '건의가 이 브라우저에만 저장됩니다.'}</span>
+            <span>${state.syncedAt ? `마지막 동기화 ${esc(new Date(state.syncedAt).toLocaleString('ko-KR'))}` : '아직 동기화하지 않음'}</span>
           </div>
-          <button class="btn btn--sm" id="boardTest" type="button">연결 확인</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn--sm" id="serverCheck" type="button">연결·키 확인</button>
+          <button class="btn btn--sm btn--soft" id="serverPush" type="button">${icon.upload} 서버로 올리기</button>
+          <button class="btn btn--sm btn--soft" id="serverPull" type="button">${icon.download} 서버에서 받기</button>
         </div>`)}
 
       ${card('화면', `
@@ -121,7 +135,7 @@ export default {
         </div>`)}
 
       <p class="muted" style="text-align:center">
-        모든 데이터는 서버 없이 이 브라우저(localStorage)에만 저장됩니다.
+        학교·학년/반·인증키는 이 브라우저에만, 시간표·시험·노트·건의는 공용 서버에 저장됩니다.
       </p>`;
 
     bind(root);
@@ -207,16 +221,53 @@ function bind(root) {
       return;
     }
     update({ boardUrl: url });
-    toast(url ? '공유 게시판을 연결했습니다.' : '이 기기 전용 모드로 돌아갑니다.');
+    toast(url ? '공용 서버를 연결했습니다.' : '이 기기 전용 모드로 돌아갑니다.');
     rerender();
   });
 
-  el('#boardTest')?.addEventListener('click', async () => {
-    if (!state.boardUrl) { toast('먼저 웹앱 주소를 입력해 주세요.'); return; }
-    toast('연결을 확인하는 중…');
+  el('#adminKey')?.addEventListener('change', async (e) => {
+    const key = e.target.value.trim();
+    if (!key) { update({ adminKey: '' }); return; }
+    if (key.length < 6) { toast('관리자 키는 6자 이상으로 정해 주세요.'); return; }
+    if (!state.boardUrl) { update({ adminKey: key }); toast('키를 저장했습니다. 서버 주소도 넣어 주세요.'); return; }
     try {
-      await listSuggestions();
-      toast('게시판과 정상적으로 연결됐습니다.');
+      await claimAdminKey(key);
+      toast('관리자 키를 서버에 등록했습니다.');
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  el('#serverCheck')?.addEventListener('click', async () => {
+    if (!state.boardUrl) { toast('먼저 웹앱 주소를 입력해 주세요.'); return; }
+    toast('확인하는 중…');
+    try {
+      await pull({ force: true });
+      const ok = state.adminKey ? await checkAdminKey() : false;
+      toast(ok ? '서버 연결 정상 · 관리자 키 확인됨' : '서버 연결 정상 (관리자 키 없음/불일치)');
+      rerender();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  el('#serverPush')?.addEventListener('click', async () => {
+    confirmModal('이 기기의 시간표·시험·수행평가를 서버에 올려 모두에게 보이게 합니다. 서버의 기존 내용은 덮어써집니다.', async () => {
+      try {
+        await pushContent();
+        toast('서버에 올렸습니다. 이제 모두 같은 내용을 봅니다.');
+        rerender();
+      } catch (err) {
+        toast(err.message);
+      }
+    }, { title: '서버로 올리기', yes: '올리기' });
+  });
+
+  el('#serverPull')?.addEventListener('click', async () => {
+    try {
+      await pull({ force: true });
+      toast('서버에서 최신 내용을 받았습니다.');
+      rerender();
     } catch (err) {
       toast(err.message);
     }

@@ -1,5 +1,6 @@
 /* 정기시험 화면 — 시험 기간별 시간표 + 나이스 학사일정 */
-import { state, save, examRange } from '../store.js';
+import { state, examRange } from '../store.js';
+import { canEdit, saveAndPush } from '../server.js';
 import { getSchedule } from '../data.js';
 import { card, emptyState, iconBtn, openModal, confirmModal, skeletonList } from '../ui.js';
 import { truncatedNotice } from './meal.js';
@@ -11,9 +12,10 @@ import {
 
 export default {
   title: '정기시험',
-  actions: () => `<button class="btn btn--sm btn--primary desk-only" id="exAdd">${icon.plus} 시험 추가</button>`,
+  actions: () => (canEdit()
+    ? `<button class="btn btn--sm btn--primary desk-only" id="exAdd">${icon.plus} 시험 추가</button>` : ''),
 
-  fab: () => ({ label: '시험 추가', icon: 'plus', action: addExam }),
+  fab: () => (canEdit() ? { label: '시험 추가', icon: 'plus', action: addExam } : null),
 
   render(root) {
     const exams = [...state.exams].sort((a, b) =>
@@ -23,7 +25,8 @@ export default {
       ${planSwitch('exams')}
       ${exams.length
         ? exams.map(examCard).join('')
-        : card('', emptyState('등록된 시험이 없습니다', '중간고사·기말고사 기간을 만들고 과목별 일정을 넣어 보세요.', '📚'))}
+        : card('', emptyState('등록된 시험이 없습니다',
+            canEdit() ? '중간고사·기말고사 기간을 만들고 과목별 일정을 넣어 보세요.' : '관리자가 등록하면 여기에 표시됩니다.', '📚'))}
       ${card('학사일정', '<div id="exSchedule">' + skeletonList(3) + '</div>',
         { actions: '<span class="muted">나이스 · 앞으로 90일</span>' })}`;
 
@@ -52,8 +55,7 @@ function examCard(exam) {
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         ${range ? `<span class="dday ${ddayClass(d)}">${esc(ddayLabel(d))}</span>` : ''}
-        ${iconBtn('edit', '시험 이름 수정', 'data-rename')}
-        ${iconBtn('trash', '시험 삭제', 'data-remove')}
+        ${canEdit() ? iconBtn('edit', '시험 이름 수정', 'data-rename') + iconBtn('trash', '시험 삭제', 'data-remove') : ''}
       </div>
     </div>
 
@@ -67,7 +69,7 @@ function examCard(exam) {
             ${byDate.get(date)
               .sort((a, b) => (a.period || 0) - (b.period || 0))
               .map((s) => `
-                <button type="button" class="exam-sub" data-session="${s.id}">
+                <button type="button" class="exam-sub ${canEdit() ? '' : 'is-locked'}" data-session="${s.id}">
                   <span class="subject-dot" style="--dot:${subjectColor(s.subject)}"></span>
                   ${s.period ? `<small>${esc(s.period)}교시</small>` : ''}
                   ${esc(s.subject)}
@@ -77,13 +79,16 @@ function examCard(exam) {
         </div>`).join('') : '<p class="muted">아직 과목 일정이 없습니다.</p>'}
     </div>
 
-    <div>
+    ${canEdit() ? `<div>
       <button type="button" class="btn btn--sm" data-add-session>${icon.plus} 과목 일정 추가</button>
-    </div>
+    </div>` : ''}
   </section>`;
 }
 
 const rerender = () => document.dispatchEvent(new CustomEvent('scedule:rerender'));
+
+/** 저장 + (공유 모드면) 서버 반영 */
+const push = () => saveAndPush().catch((e) => toast(e.message));
 
 /** 시험 기간 만들기 */
 function addExam() {
@@ -96,7 +101,7 @@ function addExam() {
     onSubmit: (v) => {
       if (!v.name.trim()) return false;
       state.exams.push({ id: uid(), name: v.name.trim(), sessions: [] });
-      save();
+      push();
       rerender();
     },
   });
@@ -108,7 +113,7 @@ function bind(root) {
 
   root.addEventListener('click', (e) => {
     const section = e.target.closest('[data-exam]');
-    if (!section) return;
+    if (!section || !canEdit()) return;
     const exam = state.exams.find((x) => x.id === section.dataset.exam);
     if (!exam) return;
 
@@ -124,14 +129,14 @@ function bind(root) {
         onSubmit: (v) => {
           if (!v.name.trim()) return false;
           exam.name = v.name.trim();
-          save();
+          push();
           rerender();
         },
       });
     } else if (e.target.closest('[data-remove]')) {
       confirmModal(`‘${exam.name}’ 전체를 삭제할까요?`, () => {
         state.exams = state.exams.filter((x) => x.id !== exam.id);
-        save();
+        push();
         rerender();
         toast('삭제했습니다.');
       });
@@ -179,7 +184,7 @@ function sessionForm(exam, session, done) {
           subject: v.subject.trim(), range: v.range.trim(),
         });
       }
-      save();
+      push();
       done();
     },
   });

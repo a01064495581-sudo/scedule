@@ -1,12 +1,12 @@
 /* 건의사항 — 익명 등록, 좋아요, 주간 인기 */
 import {
-  CATEGORIES, MAX_LEN, addSuggestion, isShared, listSuggestions,
-  removeSuggestion, toggleLike, weeklyRanking,
-} from '../board.js';
+  CATEGORIES, MAX_LEN, addSuggestion, canEdit, isShared, listSuggestions,
+  pull, removeSuggestion, toggleLike, weeklyRanking,
+} from '../server.js';
 import { card, confirmModal, emptyState, iconBtn, openModal, skeletonList } from '../ui.js';
 import { el, esc, fromNow, icon, toast } from '../utils.js';
 
-let sort = 'new';      // new | hot | mine
+let sort = 'new';      // new | hot
 let cache = null;      // 마지막으로 불러온 목록 (좋아요 토글 시 부분 갱신용)
 
 export default {
@@ -26,7 +26,7 @@ export default {
       </section>
 
       <div class="segmented segmented--full" id="sgSort">
-        ${[['new', '최신순'], ['hot', '인기순'], ['mine', '내 건의']].map(([k, label]) =>
+        ${[['new', '최신순'], ['hot', '인기순']].map(([k, label]) =>
           `<button type="button" data-sort="${k}" class="${sort === k ? 'is-active' : ''}">${label}</button>`).join('')}
       </div>
 
@@ -36,8 +36,7 @@ export default {
 
       ${isShared() ? '' : `
         <p class="hint" style="text-align:center">
-          지금은 건의가 <b>이 기기에만</b> 저장돼요.
-          반 친구들과 같은 목록을 보려면 <a href="#/settings">설정 → 공유 게시판</a>을 연결하세요.
+          지금은 건의가 <b>이 기기에만</b> 저장돼요. 반 전체가 함께 보려면 관리자가 공용 서버를 연결해야 합니다.
         </p>`}`;
 
     bind(root);
@@ -49,7 +48,8 @@ async function load() {
   const list = el('#sgList');
   if (!list) return;
   try {
-    cache = await listSuggestions();
+    if (isShared()) await pull({ force: true });
+    cache = listSuggestions();
     paint();
   } catch (e) {
     cache = null;
@@ -77,15 +77,12 @@ function paint() {
        <div class="sg-hero__meta"><span>첫 건의를 올려 보세요 — 익명이에요.</span></div>`;
 
   /* 목록 */
-  const sorted = [...items];
-  if (sort === 'hot') sorted.sort((a, b) => b.likes - a.likes || b.createdAt.localeCompare(a.createdAt));
-  const shown = sort === 'mine' ? sorted.filter((x) => x.mine) : sorted;
+  const shown = [...items];
+  if (sort === 'hot') shown.sort((a, b) => b.likes - a.likes || b.createdAt.localeCompare(a.createdAt));
 
   el('#sgList').innerHTML = shown.length
     ? shown.map(row).join('')
-    : emptyState(
-        sort === 'mine' ? '내가 올린 건의가 없습니다' : '아직 올라온 건의가 없습니다',
-        '학교·학급에 바라는 점을 익명으로 남겨 보세요.', '💬');
+    : emptyState('아직 올라온 건의가 없습니다', '학교·학급에 바라는 점을 익명으로 남겨 보세요.', '💬');
 }
 
 function row(it) {
@@ -93,11 +90,10 @@ function row(it) {
     <div class="sg-item__body">
       <div class="sg-item__top">
         <span class="chip chip--accent">${esc(it.category)}</span>
-        ${it.mine ? '<span class="chip chip--line">내 건의</span>' : ''}
         <span class="muted">${esc(fromNow(it.createdAt))}</span>
       </div>
       <p class="sg-item__text">${esc(it.text)}</p>
-      ${it.mine ? `<div class="sg-item__meta">${iconBtn('trash', '삭제', 'data-remove')}</div>` : ''}
+      ${canEdit() ? `<div class="sg-item__meta">${iconBtn('trash', '삭제 (관리자)', 'data-remove')}</div>` : ''}
     </div>
     <button type="button" class="like-btn ${it.liked ? 'is-liked' : ''}" data-like
       aria-pressed="${it.liked}" aria-label="좋아요 ${it.likes}개">
@@ -151,7 +147,7 @@ function bind(root) {
     }
 
     if (e.target.closest('[data-remove]')) {
-      confirmModal('올린 건의를 삭제할까요?', async () => {
+      confirmModal('이 건의를 삭제할까요? (관리자 권한)', async () => {
         try {
           await removeSuggestion(id);
           await load();

@@ -2,6 +2,7 @@
 import {
   ADMIN_CODE, state, applyTheme, getThemePref, isAdmin, setAdmin, setThemePref, upcomingAssessments,
 } from './store.js';
+import { isShared, pull } from './server.js';
 import { el, fmtFull, icon, toast } from './utils.js';
 
 import todayView from './views/today.js';
@@ -9,6 +10,7 @@ import mealView from './views/meal.js';
 import timetableView from './views/timetable.js';
 import assessmentsView from './views/assessments.js';
 import examsView from './views/exams.js';
+import notesView from './views/notes.js';
 import suggestionsView from './views/suggestions.js';
 import settingsView from './views/settings.js';
 
@@ -25,12 +27,13 @@ const ROUTES = [
     tab: 'assessments', sidebar: true, badge: () => upcomingAssessments().length,
   },
   { id: 'exams', label: '시험', icon: 'exam', view: examsView, tab: 'assessments', sidebar: true },
+  { id: 'notes', label: '노트', sidebarLabel: '요점정리', icon: 'note', view: notesView, tab: 'notes', sidebar: true },
   { id: 'suggestions', label: '건의', sidebarLabel: '건의사항', icon: 'megaphone', view: suggestionsView, tab: 'suggestions', sidebar: true },
   // 설정(관리자 패널)은 12자리 주소를 아는 사람만 들어온다.
   { id: 'settings', label: '설정', icon: 'settings', view: settingsView, tab: null, sidebar: false },
 ];
 
-const TABS = ['today', 'meal', 'timetable', 'assessments', 'suggestions'];
+const TABS = ['today', 'meal', 'timetable', 'assessments', 'notes', 'suggestions'];
 
 const routeId = () => {
   const id = location.hash.replace(/^#\/?/, '');
@@ -150,6 +153,20 @@ addEventListener('scroll', () => {
 applyTheme();
 syncThemeLabel();
 render();
+
+/* 공용 서버가 연결돼 있으면 시작할 때, 그리고 앱으로 돌아올 때 최신 내용을 받아 온다 */
+async function syncNow() {
+  if (!isShared()) return;
+  try {
+    await pull({ force: true });
+    render();
+  } catch (e) {
+    console.warn('공용 데이터 동기화 실패', e);
+  }
+}
+syncNow();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
+setInterval(syncNow, 5 * 60_000);
 
 /* 자정을 넘기면 화면을 갱신 */
 let lastDay = new Date().getDate();

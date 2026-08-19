@@ -41,11 +41,13 @@ const defaults = () => ({
     ['13:30', '14:20'], ['14:30', '15:20'], ['15:30', '16:20'],
   ],
 
-  /* 건의사항 */
-  suggestions: [],     // 로컬 모드 저장소: { id, text, category, createdAt, likes }
-  myLikes: [],         // 내가 좋아요한 건의 id
-  myPosts: [],         // 이 기기에서 올린 건의 id (익명이지만 본인 삭제는 가능)
-  boardUrl: '',        // 공유 게시판(Apps Script) 주소 — 비어 있으면 이 기기에만 저장
+  /* 공용 서버에서 받아 오는 것들 (공유 모드일 때는 서버가 원본) */
+  suggestions: [],     // { id, text, category, createdAt, likes, liked }
+  notes: [],           // 과목별 요점정리 { id, subject, title, body, thumbUrl, openUrl, createdAt }
+  myLikes: [],         // 이 기기 전용 모드에서 좋아요 표시용
+  boardUrl: '',        // Apps Script 웹앱 주소 — 비면 이 기기 전용 모드
+  adminKey: '',        // 서버 수정 권한 키 (관리자 기기에만 저장)
+  syncedAt: '',        // 마지막으로 서버와 맞춘 시각
   deviceId: randomId(),// 좋아요 중복 방지용 익명 식별자 (개인정보 아님)
 });
 

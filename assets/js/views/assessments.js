@@ -1,5 +1,6 @@
 /* 수행평가 — 과목·마감일·완료 관리 */
-import { state, save } from '../store.js';
+import { state } from '../store.js';
+import { canEdit, saveAndPush } from '../server.js';
 import { card, confirmModal, emptyState, iconBtn, openModal } from '../ui.js';
 import {
   daysUntil, ddayClass, ddayLabel, el, esc, fmtDate, icon, iso, subjectColor, toast, uid,
@@ -19,9 +20,10 @@ export const planSwitch = (current) => `
 export default {
   title: '수행평가',
 
-  actions: () => `<button class="btn btn--sm btn--primary desk-only" id="asAdd">${icon.plus} 추가</button>`,
+  actions: () => (canEdit()
+    ? `<button class="btn btn--sm btn--primary desk-only" id="asAdd">${icon.plus} 추가</button>` : ''),
 
-  fab: () => ({ label: '수행평가 추가', icon: 'plus', action: () => form(null, rerender) }),
+  fab: () => (canEdit() ? { label: '수행평가 추가', icon: 'plus', action: () => form(null, rerender) } : null),
 
   render(root) {
     const list = sorted().filter((a) =>
@@ -52,13 +54,16 @@ export default {
           ? `<div class="list">${list.map(row).join('')}</div>`
           : emptyState(
               filter === 'done' ? '완료한 항목이 없습니다' : '등록된 수행평가가 없습니다',
-              '아래 ‘수행평가 추가’ 버튼으로 등록해 보세요.', '📝'))}`;
+              canEdit() ? '아래 ‘수행평가 추가’ 버튼으로 등록해 보세요.' : '관리자가 등록하면 여기에 표시됩니다.', '📝'))}`;
 
     bind(root);
   },
 };
 
 const rerender = () => document.dispatchEvent(new CustomEvent('scedule:rerender'));
+
+/** 저장 + (공유 모드면) 서버 반영 */
+const push = () => saveAndPush().catch((e) => toast(e.message));
 
 const sorted = () => [...state.assessments].sort((a, b) => {
   if (a.done !== b.done) return a.done ? 1 : -1;
@@ -74,9 +79,9 @@ const stat = (label, value) => `
 function row(a) {
   const d = daysUntil(a.date);
   return `<div class="list__item" data-id="${a.id}">
-    <label class="check" style="min-height:auto">
+    ${canEdit() ? `<label class="check" style="min-height:auto">
       <input type="checkbox" data-toggle ${a.done ? 'checked' : ''} aria-label="완료 표시">
-    </label>
+    </label>` : ''}
     <span class="subject-dot" style="--dot:${subjectColor(a.subject)}"></span>
     <div class="list__main">
       <div class="list__title ${a.done ? 'is-done' : ''}">${esc(a.title)}</div>
@@ -87,10 +92,10 @@ function row(a) {
       </div>
     </div>
     <span class="dday ${a.done ? 'dday--past' : ddayClass(d)}">${esc(ddayLabel(d))}</span>
-    <div class="list__actions">
+    ${canEdit() ? `<div class="list__actions">
       ${iconBtn('edit', '수정', 'data-edit')}
       ${iconBtn('trash', '삭제', 'data-delete')}
-    </div>
+    </div>` : ''}
   </div>`;
 }
 
@@ -106,7 +111,7 @@ function bind(root) {
 
   root.addEventListener('click', (e) => {
     const item = e.target.closest('.list__item');
-    if (!item) return;
+    if (!item || !canEdit()) return;
     const a = state.assessments.find((x) => x.id === item.dataset.id);
     if (!a) return;
 
@@ -114,7 +119,7 @@ function bind(root) {
     else if (e.target.closest('[data-delete]')) {
       confirmModal(`‘${a.title}’ 항목을 삭제할까요?`, () => {
         state.assessments = state.assessments.filter((x) => x.id !== a.id);
-        save();
+        push();
         rerender();
         toast('삭제했습니다.');
       });
@@ -127,7 +132,7 @@ function bind(root) {
     const a = state.assessments.find((x) => x.id === box.closest('.list__item').dataset.id);
     if (!a) return;
     a.done = box.checked;
-    save();
+    push();
     rerender();
   });
 }
@@ -175,7 +180,7 @@ export function form(a, done = () => {}) {
           date: v.date, note: v.note.trim(), done: false,
         });
       }
-      save();
+      push();
       done();
       toast(a ? '수정했습니다.' : '추가했습니다.');
     },

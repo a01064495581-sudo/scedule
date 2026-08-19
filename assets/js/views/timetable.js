@@ -1,5 +1,6 @@
 /* 시간표 화면 — 셀을 눌러 직접 편집하거나, 나이스에서 한 번에 가져온다 */
 import { state, save } from '../store.js';
+import { canEdit, saveAndPush } from '../server.js';
 import { getClasses, getTimetable } from '../data.js';
 import { card, openModal } from '../ui.js';
 import {
@@ -8,11 +9,16 @@ import {
 } from '../utils.js';
 
 export const DAYS = ['월', '화', '수', '목', '금'];
+
+/** 저장 + (공유 모드면) 서버 반영 */
+const push = () => saveAndPush().catch((e) => toast(e.message));
 const cellKey = (day, period) => `${day}-${period}`;
 
 export default {
   title: '시간표',
-  actions: () => `<button class="btn btn--sm btn--primary desk-only" id="ttImport">${icon.download} 나이스에서 가져오기</button>`,
+  actions: () => (canEdit()
+    ? `<button class="btn btn--sm btn--primary desk-only" id="ttImport">${icon.download} 나이스에서 가져오기</button>`
+    : ''),
 
   render(root) {
     const todayDay = (new Date().getDay() + 6) % 7; // 0=월
@@ -20,20 +26,22 @@ export default {
       ${card('주간 시간표', `
         <div class="tt-wrap">${table(todayDay)}</div>
         <p class="hint mob-only" style="margin-top:8px;text-align:center">좌우로 넘기면 나머지 요일이 보여요</p>`, {
-        actions: '<span class="muted">셀을 눌러 입력</span>',
+        actions: `<span class="muted">${canEdit() ? '셀을 눌러 입력' : '반 공용 시간표'}</span>`,
       })}
 
-      <div class="stack">
-        <div class="row-between" style="gap:8px">
-          <button type="button" class="btn btn--sm" id="ttPeriods" style="flex:1">교시 수 ${state.periods}</button>
-          <button type="button" class="btn btn--sm" id="ttClear" style="flex:1">비우기</button>
+      ${canEdit() ? `
+        <div class="stack">
+          <div class="row-between" style="gap:8px">
+            <button type="button" class="btn btn--sm" id="ttPeriods" style="flex:1">교시 수 ${state.periods}</button>
+            <button type="button" class="btn btn--sm" id="ttClear" style="flex:1">비우기</button>
+          </div>
+          <button type="button" class="btn btn--sm btn--soft mob-only" id="ttImportMob" style="width:100%">
+            ${icon.download} 나이스에서 시간표 가져오기
+          </button>
         </div>
-        <button type="button" class="btn btn--sm btn--soft mob-only" id="ttImportMob" style="width:100%">
-          ${icon.download} 나이스에서 시간표 가져오기
-        </button>
-      </div>
 
-      ${card('교시별 시간', bells(), { actions: '<span class="muted">현재 수업 표시에 사용</span>' })}`;
+        ${card('교시별 시간', bells(), { actions: '<span class="muted">현재 수업 표시에 사용</span>' })}
+      ` : ''}`;
 
     bind(root);
   },
@@ -47,10 +55,10 @@ function table(todayDay) {
       const has = !!cell.subject;
       const color = has ? subjectColor(cell.subject) : '';
       return `<td>
-        <button type="button" class="tt__cell ${has ? '' : 'is-empty'}"
+        <button type="button" class="tt__cell ${has ? '' : 'is-empty'} ${canEdit() ? '' : 'is-locked'}"
           data-day="${day}" data-period="${p}"
           ${has ? `data-color style="--dot:${color}"` : ''}>
-          <span class="tt__subject">${has ? esc(cell.subject) : '+'}</span>
+          <span class="tt__subject">${has ? esc(cell.subject) : (canEdit() ? '+' : '')}</span>
           ${cell.room ? `<span class="tt__room">${esc(cell.room)}</span>` : ''}
         </button>
       </td>`;
@@ -84,7 +92,7 @@ function bind(root) {
 
   root.addEventListener('click', (e) => {
     const cell = e.target.closest('.tt__cell');
-    if (!cell) return;
+    if (!cell || !canEdit()) return;
     editCell(Number(cell.dataset.day), Number(cell.dataset.period), rerender);
   });
 
@@ -94,7 +102,7 @@ function bind(root) {
     const i = Number(input.dataset.bell);
     state.bells[i] = state.bells[i] || ['', ''];
     state.bells[i][Number(input.dataset.pos)] = input.value;
-    save();
+    push();
   });
 
   el('#ttPeriods')?.addEventListener('click', () => {
@@ -108,7 +116,7 @@ function bind(root) {
         const n = Math.min(12, Math.max(1, Number(periods) || state.periods));
         state.periods = n;
         while (state.bells.length < n) state.bells.push(['', '']);
-        save();
+        push();
         rerender();
       },
     });
@@ -122,7 +130,7 @@ function bind(root) {
       danger: true,
       onSubmit: () => {
         state.timetable = {};
-        save();
+        push();
         rerender();
         toast('시간표를 비웠습니다.');
       },
@@ -156,7 +164,7 @@ function editCell(day, period, rerender) {
       const key = cellKey(day, period);
       if (!subject.trim()) delete state.timetable[key];
       else state.timetable[key] = { subject: subject.trim(), room: room.trim(), teacher: teacher.trim() };
-      save();
+      push();
       rerender();
     },
   });
@@ -295,7 +303,7 @@ async function runImport(v) {
     state.timetable = next;
     state.periods = Math.max(state.periods, Math.min(12, maxPeriod));
     while (state.bells.length < state.periods) state.bells.push(['', '']);
-    save();
+    push();
     document.dispatchEvent(new CustomEvent('scedule:rerender'));
 
     const when = `${monday.getMonth() + 1}월 ${monday.getDate()}일 주`;

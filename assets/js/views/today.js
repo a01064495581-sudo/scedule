@@ -1,9 +1,9 @@
 /* 오늘 — 하루에 필요한 정보를 한 화면에 */
 import { state, daySchedule, upcomingAssessments, upcomingExams } from '../store.js';
 import { getMeals } from '../data.js';
-import { listSuggestions, weeklyRanking } from '../board.js';
+import { canEdit, listSuggestions, weeklyRanking } from '../server.js';
 import { card, emptyState, skeletonList } from '../ui.js';
-import { mealBlock } from './meal.js';
+import { bindMealTabs, mealBlock } from './meal.js';
 import { DAYS } from './timetable.js';
 import {
   daysUntil, ddayClass, ddayLabel, el, esc, fmtDate, fmtFull, fromNow,
@@ -70,7 +70,8 @@ function currentPeriod(now) {
 
 function timeline(rows, nowPeriod) {
   if (!rows.length) {
-    return emptyState('오늘 등록된 수업이 없습니다', '시간표 화면에서 직접 입력할 수 있어요.', '🗓️');
+    return emptyState('오늘 등록된 수업이 없습니다',
+      canEdit() ? '시간표 화면에서 입력하거나 나이스에서 가져올 수 있어요.' : '관리자가 시간표를 올리면 여기에 표시됩니다.', '🗓️');
   }
   return `<div class="timeline">${rows.map((r) => {
     const bell = state.bells[r.period - 1] || [];
@@ -102,7 +103,8 @@ function upcomingList(assessments, exams) {
   ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
 
   if (!items.length) {
-    return emptyState('예정된 일정이 없습니다', '수행평가·시험을 등록하면 D-day가 표시돼요.', '✅');
+    return emptyState('예정된 일정이 없습니다',
+      canEdit() ? '수행평가·시험을 등록하면 D-day가 표시돼요.' : '관리자가 등록하면 D-day가 표시됩니다.', '✅');
   }
   return `<div class="list">${items.map((it) => {
     const d = daysUntil(it.date);
@@ -128,6 +130,7 @@ async function loadMeal() {
     const base = today();
     const res = await getMeals(ymd(base), ymd(base));
     box.innerHTML = mealBlock(res?.meals);
+    bindMealTabs(box.parentElement || box);
   } catch (e) {
     box.innerHTML = emptyState('급식을 불러오지 못했습니다', e.message, '⚠️');
   }
@@ -137,7 +140,7 @@ async function loadTopSuggestion() {
   const box = el('#todayTop');
   if (!box) return;
   try {
-    const [top] = weeklyRanking(await listSuggestions(), 1);
+    const [top] = weeklyRanking(listSuggestions(), 1);
     box.innerHTML = top
       ? `<p class="sg-item__text">${esc(top.text)}</p>
          <div class="sg-item__meta" style="margin-top:8px">

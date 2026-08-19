@@ -69,6 +69,7 @@ body[data-section="meal"]        { --accent: #e07a1f; --accent-2: #f0a933; --acc
 body[data-section="timetable"]   { --accent: #1d80d6; --accent-2: #4aa9f0; --accent-soft: #e2f0ff; --accent-text: #1266ad; }
 body[data-section="assessments"] { --accent: #0f9b6c; --accent-2: #34c48b; --accent-soft: #ddf7ec; --accent-text: #0b7a55; }
 body[data-section="exams"]       { --accent: #d94371; --accent-2: #f2708f; --accent-soft: #ffe4ec; --accent-text: #b32d59; }
+body[data-section="notes"]       { --accent: #0d7f8f; --accent-2: #35b3c0; --accent-soft: #dcf4f7; --accent-text: #0a6675; }
 body[data-section="suggestions"] { --accent: #7a4ddb; --accent-2: #a97cf5; --accent-soft: #f0e8ff; --accent-text: #6437bd; }
 body[data-section="settings"]    { --accent: #4c5670; --accent-2: #737f9c; --accent-soft: #e9ecf3; --accent-text: #3c455c; }
 
@@ -103,6 +104,7 @@ body[data-section="settings"]    { --accent: #4c5670; --accent-2: #737f9c; --acc
 :root[data-theme="dark"] body[data-section="timetable"]   { --accent: #4aa9f0; --accent-2: #7cc6ff; --accent-soft: #10293f; --accent-text: #8ccdff; --on-accent: #04182a; }
 :root[data-theme="dark"] body[data-section="assessments"] { --accent: #34c48b; --accent-2: #6fe3b3; --accent-soft: #0e2f23; --accent-text: #7ce9bb; --on-accent: #04231a; }
 :root[data-theme="dark"] body[data-section="exams"]       { --accent: #f2708f; --accent-2: #ff9bb2; --accent-soft: #3a1622; --accent-text: #ffa3b9; --on-accent: #2a0611; }
+:root[data-theme="dark"] body[data-section="notes"]       { --accent: #35b3c0; --accent-2: #6ddbe6; --accent-soft: #0c2c33; --accent-text: #7fe0ea; --on-accent: #04191d; }
 :root[data-theme="dark"] body[data-section="suggestions"] { --accent: #a97cf5; --accent-2: #c9a6ff; --accent-soft: #281a45; --accent-text: #cbb0ff; --on-accent: #150726; }
 :root[data-theme="dark"] body[data-section="settings"]    { --accent: #8f9ab8; --accent-2: #b3bdd6; --accent-soft: #1e2432; --accent-text: #bcc5da; --on-accent: #10131c; }
 
@@ -322,6 +324,7 @@ a { color: var(--accent-text); text-decoration: none; }
   box-shadow: 0 12px 28px -10px color-mix(in srgb, var(--accent) 80%, transparent);
   transition: transform .16s var(--ease);
 }
+.fab[hidden] { display: none; }
 .fab svg { width: 20px; height: 20px; }
 .fab:active { transform: scale(.94); }
 
@@ -861,3 +864,110 @@ a { color: var(--accent-text); text-decoration: none; }
 .card__title { display: flex; align-items: center; gap: 7px; }
 .card__title svg { width: 17px; height: 17px; flex: none; color: var(--accent-text); }
 code { padding: 1px 5px; border-radius: 6px; background: var(--surface-3); font-size: 12px; }
+
+/* --- 10. 급식 (컴팩트) --------------------------------------------------- */
+.dish-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dish-chip {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 14px; font-weight: 550;
+}
+.dish-chip small { font-size: 10.5px; color: var(--text-3); font-weight: 500; }
+.meal-pane { margin-top: 12px; }
+
+.day-strip {
+  display: flex; gap: 6px;
+  margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.day-strip::-webkit-scrollbar { display: none; }
+.day-chip {
+  flex: 1 0 54px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-height: 58px; padding: 8px 6px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  transition: transform .14s var(--ease), background .16s, color .16s, border-color .16s;
+}
+.day-chip__dow { font-size: 11px; font-weight: 650; }
+.day-chip__num { font-size: 17px; font-weight: 780; letter-spacing: -.03em; }
+.day-chip:active { transform: scale(.94); }
+.day-chip.is-today { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.day-chip.is-active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: transparent; color: var(--on-accent);
+}
+
+.cal-head, .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-head { margin-bottom: 6px; }
+.cal-head span { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-3); }
+.cal-cell {
+  position: relative;
+  display: grid; place-items: center;
+  aspect-ratio: 1 / 1; min-height: 38px;
+  border: 1px solid var(--line); border-radius: 11px;
+  background: var(--surface);
+  color: var(--text); font-size: 13px; font-weight: 620;
+}
+.cal-cell.is-blank { border-color: transparent; background: transparent; color: var(--text-3); opacity: .45; }
+.cal-cell i { position: absolute; bottom: 5px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.cal-cell.is-today { border-color: var(--accent); }
+.cal-cell.is-active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: transparent; color: var(--on-accent);
+}
+.cal-cell.is-active i { background: currentColor; }
+
+.meal-detail__head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
+}
+details.card > summary { list-style: none; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary::after { content: " ▾"; color: var(--text-3); }
+details.card[open] > summary::after { content: " ▴"; }
+
+/* --- 11. 요점정리 노트 --------------------------------------------------- */
+.chip-row {
+  display: flex; gap: 6px;
+  margin: 0 calc(-1 * var(--pad)); padding: 2px var(--pad);
+  overflow-x: auto; scrollbar-width: none;
+}
+.chip-row::-webkit-scrollbar { display: none; }
+.chip-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex: none;
+  min-height: 36px; padding: 7px 14px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13.5px; font-weight: 650;
+  white-space: nowrap;
+}
+.chip-tab.is-active {
+  background: var(--accent-soft); border-color: transparent; color: var(--accent-text);
+}
+
+.note-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
+.note-card { padding: 0; overflow: hidden; }
+.note-card__thumb { display: block; background: var(--surface-2); }
+.note-card__thumb img { display: block; width: 100%; max-height: 300px; object-fit: cover; }
+.note-card__body { display: flex; flex-direction: column; gap: 8px; padding: 14px var(--pad); }
+.note-card__top { display: flex; align-items: center; gap: 8px; }
+.note-card__top .icon-btn { margin-left: auto; }
+.note-card__title { font-size: 15.5px; font-weight: 720; letter-spacing: -.02em; }
+.note-card__text { font-size: 14px; color: var(--text-2); white-space: pre-wrap; }
+
+@media (min-width: 700px) {
+  .note-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+}
+
+/* 학생 화면(읽기 전용)에서는 눌리는 느낌을 주지 않는다 */
+.tt__cell.is-locked, .exam-sub.is-locked { cursor: default; }
+.tt__cell.is-locked:active, .exam-sub.is-locked:active { transform: none; }
+.tt__cell.is-locked.is-empty { border-style: solid; opacity: .5; }
