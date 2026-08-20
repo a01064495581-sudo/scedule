@@ -10,7 +10,7 @@ let filter = 'todo'; // todo | done | all
 
 /** 수행평가 ↔ 정기시험 전환 (모바일에서는 두 화면이 '평가' 탭 하나로 묶여 있다) */
 export const planSwitch = (current) => `
-  <div class="segmented segmented--full">
+  <div class="segmented segmented--full mob-only-flex">
     <a class="${current === 'assessments' ? 'is-active' : ''}" href="#/assessments"
        style="display:flex;align-items:center;justify-content:center">수행평가</a>
     <a class="${current === 'exams' ? 'is-active' : ''}" href="#/exams"

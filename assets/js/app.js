@@ -26,7 +26,7 @@ const ROUTES = [
     id: 'assessments', label: '평가', sidebarLabel: '수행평가', icon: 'task', view: assessmentsView,
     tab: 'assessments', sidebar: true, badge: () => upcomingAssessments().length,
   },
-  { id: 'exams', label: '시험', icon: 'exam', view: examsView, tab: 'assessments', sidebar: true },
+  { id: 'exams', label: '시험', sidebarLabel: '정기시험', icon: 'exam', view: examsView, tab: 'assessments', sidebar: true },
   { id: 'notes', label: '노트', sidebarLabel: '요점정리', icon: 'note', view: notesView, tab: 'notes', sidebar: true },
   { id: 'suggestions', label: '건의', sidebarLabel: '건의사항', icon: 'megaphone', view: suggestionsView, tab: 'suggestions', sidebar: true },
   // 설정(관리자 패널)은 12자리 주소를 아는 사람만 들어온다.
@@ -49,25 +49,27 @@ const routeId = () => {
   return ROUTES.some((r) => r.id === id) ? id : 'today';
 };
 
-const navItem = (r, activeTab, { compact = false } = {}) => {
+/**
+ * compact=true  → 모바일 탭바. 시험처럼 다른 화면에 묶인 경우 대표 탭이 켜진다.
+ * compact=false → 데스크톱 사이드바. 지금 보고 있는 화면 하나만 켜진다.
+ */
+const navItem = (r, route, { compact = false } = {}) => {
   const badge = r.badge?.() || 0;
+  const active = compact ? r.tab === route.tab : r.id === route.id;
   const label = compact ? r.label : (r.sidebarLabel || r.label);
-  return `<a class="nav__item ${r.tab === activeTab || r.id === activeTab ? 'is-active' : ''}" href="#/${r.id}">
+  return `<a class="nav__item ${active ? 'is-active' : ''}" href="#/${r.id}">
     ${icon[r.icon]}<span>${label}</span>
     ${badge ? `<span class="nav__badge">${badge}</span>` : ''}
   </a>`;
 };
 
 function renderNav(route) {
-  const activeSidebar = route.id;
-  const activeTab = route.tab;
-
   const sidebarRoutes = ROUTES.filter((r) => r.sidebar || (r.id === 'settings' && isAdmin()));
-  el('#nav').innerHTML = sidebarRoutes.map((r) => navItem(r, activeSidebar)).join('');
+  el('#nav').innerHTML = sidebarRoutes.map((r) => navItem(r, route)).join('');
 
   el('#tabbar').innerHTML = TABS
     .map((id) => ROUTES.find((r) => r.id === id))
-    .map((r) => navItem(r, activeTab, { compact: true })).join('');
+    .map((r) => navItem(r, route, { compact: true })).join('');
 
   el('#brandSchool').textContent = state.school
     ? `${state.school.name}${state.profile.grade ? ` · ${state.profile.grade}-${state.profile.classNm}` : ''}`

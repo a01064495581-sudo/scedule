@@ -828,10 +828,11 @@ a { color: var(--accent-text); text-decoration: none; }
 /* --- 8. 반응형 표시 유틸 ------------------------------------------------- */
 .desk-only { display: none !important; }
 .mob-only { display: inline-flex; }
+.mob-only-flex { display: flex; }
 
 @media (min-width: 900px) {
   .desk-only { display: inline-flex !important; }
-  .mob-only { display: none !important; }
+  .mob-only, .mob-only-flex { display: none !important; }
 }
 
 /* --- 9. 컨트롤 바 -------------------------------------------------------- */
