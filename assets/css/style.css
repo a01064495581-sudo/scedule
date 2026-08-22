@@ -643,6 +643,21 @@ a { color: var(--accent-text); text-decoration: none; }
 .progress { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .progress > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
 
+/* 관리자 로그인 (#/admin) */
+.login { display: flex; justify-content: center; padding: 8px 0 24px; }
+.login__card { width: 100%; max-width: 420px; }
+.login__head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; margin-bottom: 18px; }
+.login__head h2 { font-size: 19px; font-weight: 750; letter-spacing: -.02em; }
+.login__head .muted { font-size: 13px; line-height: 1.5; }
+.login__lock {
+  display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 4px;
+  border-radius: 15px; background: var(--accent-soft); color: var(--accent-text);
+}
+.login__lock svg { width: 22px; height: 22px; }
+.login form { display: flex; flex-direction: column; gap: 12px; }
+.login__foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.btn--wide { width: 100%; justify-content: center; }
+
 /* 건의사항 */
 .sg-hero { display: flex; flex-direction: column; gap: 10px; }
 .sg-hero__label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 750; opacity: .9; }

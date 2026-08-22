@@ -1,12 +1,13 @@
 /* 설정 — 학교 검색, 학년/반, 나이스 인증키, 테마, 백업/복원 */
 import {
-  ADMIN_CODE, state, save, update, exportJSON, importJSON, resetAll,
-  getThemePref, setAdmin, setThemePref,
+  ADMIN_PATH, state, save, update, exportJSON, importJSON, resetAll,
+  getThemePref, setThemePref,
 } from '../store.js';
+import { changeCred, clearLocalCred, logout } from '../admin.js';
 import { clearCache } from '../data.js';
 import { searchSchool } from '../neis.js';
-import { checkAdminKey, claimAdminKey, pull, pushContent } from '../server.js';
-import { card, confirmModal } from '../ui.js';
+import { checkAdminKey, isShared, pull, pushContent } from '../server.js';
+import { card, confirmModal, openModal } from '../ui.js';
 import { el, esc, icon, toast } from '../utils.js';
 
 export default {
@@ -20,13 +21,15 @@ export default {
       <section class="card card--accent">
         <div class="sg-hero__label">${icon.lock} 관리자 패널</div>
         <p style="margin-top:6px;font-size:14px;line-height:1.5">
-          이 화면은 아래 주소를 아는 사람만 들어올 수 있어요. 학생들 화면에는 보이지 않습니다.
+          <strong>${esc(state.adminId || '관리자')}</strong> 로 로그인했습니다.
+          이 화면은 학생들 화면에는 보이지 않아요.
         </p>
         <p class="mono" style="margin-top:10px;padding:9px 12px;border-radius:12px;
-           background:rgba(255,255,255,.2);font-size:13px;word-break:break-all">#/${ADMIN_CODE}</p>
+           background:rgba(255,255,255,.2);font-size:13px;word-break:break-all">#/${ADMIN_PATH}</p>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           <button class="btn btn--sm" id="adminCopy" type="button">주소 복사</button>
-          <button class="btn btn--sm" id="adminLock" type="button">이 기기에서 관리자 끄기</button>
+          <button class="btn btn--sm" id="adminCred" type="button">아이디·비밀번호 변경</button>
+          <button class="btn btn--sm" id="adminLock" type="button">로그아웃</button>
         </div>
       </section>
 
@@ -83,24 +86,24 @@ export default {
           </span>
         </div>
 
-        <div class="field" style="margin-top:14px">
-          <label for="adminKey">관리자 키</label>
-          <input class="input" id="adminKey" type="password" value="${esc(state.adminKey || '')}"
-            placeholder="6자 이상, 서버 수정 권한" autocomplete="off">
-          <span class="hint">
-            서버에 처음 등록한 키가 관리자 키가 됩니다. 이 키가 있어야 시간표·시험·노트를 수정할 수 있어요.
-            학생 기기에는 넣지 마세요.
-          </span>
+        <div class="setting-row" style="margin-top:14px">
+          <div class="setting-row__text">
+            <strong>관리자 계정</strong>
+            <span>${state.adminId
+              ? `아이디 ${esc(state.adminId)} · 로그인한 비밀번호로 서버 수정 권한을 확인합니다.`
+              : '로그인 정보가 없습니다. 다시 로그인해 주세요.'}</span>
+          </div>
+          <button class="btn btn--sm" id="adminCred2" type="button">변경</button>
         </div>
 
-        <div class="setting-row" style="margin-top:8px">
+        <div class="setting-row">
           <div class="setting-row__text">
             <strong>${state.boardUrl ? '공유 모드' : '이 기기 전용 모드'}</strong>
             <span>${state.syncedAt ? `마지막 동기화 ${esc(new Date(state.syncedAt).toLocaleString('ko-KR'))}` : '아직 동기화하지 않음'}</span>
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn--sm" id="serverCheck" type="button">연결·키 확인</button>
+          <button class="btn btn--sm" id="serverCheck" type="button">연결·권한 확인</button>
           <button class="btn btn--sm btn--soft" id="serverPush" type="button">${icon.upload} 서버로 올리기</button>
           <button class="btn btn--sm btn--soft" id="serverPull" type="button">${icon.download} 서버에서 받기</button>
         </div>`)}
@@ -147,7 +150,7 @@ function bind(root) {
 
   /* 관리자 */
   el('#adminCopy')?.addEventListener('click', async () => {
-    const url = `${location.origin}${location.pathname}#/${ADMIN_CODE}`;
+    const url = `${location.origin}${location.pathname}#/${ADMIN_PATH}`;
     try {
       await navigator.clipboard.writeText(url);
       toast('관리자 주소를 복사했습니다.');
@@ -157,11 +160,11 @@ function bind(root) {
   });
 
   el('#adminLock')?.addEventListener('click', () => {
-    confirmModal('이 기기에서 관리자 모드를 끕니다. 다시 들어오려면 관리자 주소가 필요해요.', () => {
-      setAdmin(false);
+    confirmModal('이 기기에서 로그아웃합니다. 다시 들어오려면 아이디와 비밀번호가 필요해요.', () => {
+      logout();
       location.hash = '#/today';
-      toast('관리자 모드를 껐습니다.');
-    }, { title: '관리자 모드 끄기', yes: '끄기' });
+      toast('로그아웃했습니다.');
+    }, { title: '로그아웃', yes: '로그아웃' });
   });
 
   /* 학교 검색 */
@@ -225,18 +228,39 @@ function bind(root) {
     rerender();
   });
 
-  el('#adminKey')?.addEventListener('change', async (e) => {
-    const key = e.target.value.trim();
-    if (!key) { update({ adminKey: '' }); return; }
-    if (key.length < 6) { toast('관리자 키는 6자 이상으로 정해 주세요.'); return; }
-    if (!state.boardUrl) { update({ adminKey: key }); toast('키를 저장했습니다. 서버 주소도 넣어 주세요.'); return; }
-    try {
-      await claimAdminKey(key);
-      toast('관리자 키를 서버에 등록했습니다.');
-    } catch (err) {
-      toast(err.message);
-    }
-  });
+  const editCred = () => {
+    openModal({
+      title: '아이디 · 비밀번호 변경',
+      submitLabel: '변경',
+      body: `<div class="stack">
+        <div class="field">
+          <label for="credId">아이디</label>
+          <input class="input" id="credId" name="id" value="${esc(state.adminId || '')}"
+            autocapitalize="none" autocorrect="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="credPw">새 비밀번호</label>
+          <input class="input" id="credPw" name="pw" type="password" autocomplete="new-password"
+            placeholder="비우면 지금 비밀번호 그대로">
+        </div>
+        <div class="field">
+          <label for="credPw2">새 비밀번호 확인</label>
+          <input class="input" id="credPw2" name="pw2" type="password" autocomplete="new-password">
+        </div>
+        <p class="hint">${isShared()
+          ? '공용 서버에 등록된 계정이 바뀝니다. 다른 관리자 기기는 새 비밀번호로 다시 로그인해야 해요.'
+          : '이 브라우저에 저장된 관리자 계정이 바뀝니다.'}</p>
+      </div>`,
+      onSubmit: ({ id, pw, pw2 }) => {
+        changeCred(id, pw, pw2)
+          .then(() => { toast('관리자 계정을 바꿨습니다.'); rerender(); })
+          .catch((err) => toast(err.message));
+      },
+    });
+  };
+
+  el('#adminCred')?.addEventListener('click', editCred);
+  el('#adminCred2')?.addEventListener('click', editCred);
 
   el('#serverCheck')?.addEventListener('click', async () => {
     if (!state.boardUrl) { toast('먼저 웹앱 주소를 입력해 주세요.'); return; }
@@ -244,7 +268,7 @@ function bind(root) {
     try {
       await pull({ force: true });
       const ok = state.adminKey ? await checkAdminKey() : false;
-      toast(ok ? '서버 연결 정상 · 관리자 키 확인됨' : '서버 연결 정상 (관리자 키 없음/불일치)');
+      toast(ok ? '서버 연결 정상 · 수정 권한 확인됨' : '서버 연결 정상 (수정 권한 없음 — 다시 로그인해 주세요)');
       rerender();
     } catch (err) {
       toast(err.message);
@@ -316,10 +340,12 @@ function bind(root) {
   });
 
   el('#dataReset')?.addEventListener('click', () => {
-    confirmModal('저장된 학교·시간표·수행평가·시험 정보를 모두 지웁니다. 되돌릴 수 없어요.', () => {
+    confirmModal('저장된 학교·시간표·수행평가·시험 정보와 이 기기의 관리자 로그인을 모두 지웁니다. 되돌릴 수 없어요.', () => {
       resetAll();
       clearCache();
-      rerender();
+      clearLocalCred();
+      logout();
+      location.hash = '#/today';
       toast('초기화했습니다.');
     }, { title: '전체 초기화', yes: '모두 지우기' });
   });

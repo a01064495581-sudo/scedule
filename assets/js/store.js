@@ -14,9 +14,9 @@ export const DEFAULT_SCHOOL = {
   kindName: '고등학교',
 };
 
-/** 관리자 패널 주소 — 이 12자리를 아는 사람만 설정 화면에 들어올 수 있다.
- *  (완전한 보안은 아니다. 코드가 공개 저장소에 있으므로 '숨김'에 가깝다.) */
-export const ADMIN_CODE = '688219355416';
+/** 관리자 패널 주소 — 사이트주소/#/admin 에서 아이디·비밀번호로 로그인한다.
+ *  로그인 확인은 공용 서버가 하고(공유 모드), 서버가 없으면 이 브라우저에 만든 계정으로 연다. */
+export const ADMIN_PATH = 'admin';
 const ADMIN_KEY = 'scedule.admin';
 
 export const isAdmin = () => localStorage.getItem(ADMIN_KEY) === '1';
@@ -46,7 +46,8 @@ const defaults = () => ({
   notes: [],           // 과목별 요점정리 { id, subject, title, body, thumbUrl, openUrl, createdAt }
   myLikes: [],         // 이 기기 전용 모드에서 좋아요 표시용
   boardUrl: '',        // Apps Script 웹앱 주소 — 비면 이 기기 전용 모드
-  adminKey: '',        // 서버 수정 권한 키 (관리자 기기에만 저장)
+  adminId: '',         // 로그인한 관리자 아이디 (관리자 기기에만 저장)
+  adminKey: '',        // 로그인 비밀번호 = 서버 수정 권한 키 (관리자 기기에만 저장)
   syncedAt: '',        // 마지막으로 서버와 맞춘 시각
   deviceId: randomId(),// 좋아요 중복 방지용 익명 식별자 (개인정보 아님)
 });
