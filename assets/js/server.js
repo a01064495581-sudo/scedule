@@ -21,7 +21,7 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 
 /* --- 통신 ---------------------------------------------------------------- */
 
-async function call(payload, { admin = false } = {}) {
+async function call(payload, { admin = false, key } = {}) {
   const url = (state.boardUrl || '').trim();
   if (!url) throw new Error('공용 서버 주소가 설정되지 않았습니다.');
 
@@ -34,7 +34,7 @@ async function call(payload, { admin = false } = {}) {
       body: JSON.stringify({
         ...payload,
         device: state.deviceId,
-        ...(admin ? { adminKey: state.adminKey || '' } : {}),
+        ...(admin ? { adminKey: key ?? state.adminKey ?? '' } : {}),
       }),
       redirect: 'follow',
     });
@@ -111,12 +111,47 @@ export async function saveAndPush() {
   if (isShared() && canEdit()) await pushContent();
 }
 
-/* --- 관리자 키 ----------------------------------------------------------- */
+/* --- 관리자 계정 --------------------------------------------------------- */
 
-export async function claimAdminKey(key) {
-  state.adminKey = key;
-  save();
-  await call({ action: 'claimAdmin', adminKey: key });
+/** 백엔드(apps-script.gs)가 아직 예전 버전이라 이 요청을 모르는 경우 */
+const isLegacyBackend = (e) => /알 수 없는 요청/.test(e?.message || '');
+
+/** 서버에 관리자 계정이 등록돼 있는가 */
+export async function adminStatus() {
+  try {
+    const { registered } = await call({ action: 'adminStatus' });
+    return !!registered;
+  } catch (e) {
+    if (!isLegacyBackend(e)) throw e;
+    return true;   // 예전 백엔드는 알려 주지 않는다 — 로그인 화면을 먼저 보여 준다
+  }
+}
+
+/** 아이디·비밀번호 확인 (틀리면 예외) */
+export async function adminLogin(adminId, password) {
+  try {
+    await call({ action: 'adminLogin', adminId, adminKey: password });
+  } catch (e) {
+    if (!isLegacyBackend(e)) throw e;
+    // 예전 백엔드에는 아이디 개념이 없다. 비밀번호를 관리자 키로 확인한다.
+    const { admin } = await call({ action: 'checkAdmin' }, { admin: true, key: password });
+    if (!admin) throw new Error('아이디 또는 비밀번호가 맞지 않습니다.');
+  }
+}
+
+/** 관리자 계정 만들기 — 서버에 아직 관리자가 없을 때만 */
+export async function adminRegister(adminId, password) {
+  try {
+    await call({ action: 'adminRegister', adminId, adminKey: password });
+  } catch (e) {
+    if (!isLegacyBackend(e)) throw e;
+    await call({ action: 'claimAdmin', adminKey: password });
+  }
+}
+
+/** 아이디·비밀번호 바꾸기 (비밀번호가 비면 아이디만) — 지금 관리자만 */
+export async function setAdminCred(adminId, newKey) {
+  await call({ action: 'setAdminCred', adminId, newKey }, { admin: true });
 }
 
 export async function checkAdminKey() {

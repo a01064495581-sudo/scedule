@@ -12,8 +12,9 @@
  *      · 실행 계정 : 나
  *      · 액세스 권한 : 모든 사용자      ← 로그인 없이 쓰려면 필수
  * 3. 나온 웹앱 주소(.../exec)를 사이트 관리자 패널에 붙여넣기
- * 4. 관리자 패널에서 '관리자 키'를 정하면, 그 키가 이 서버에 등록된다.
- *    이후 시간표·시험·노트 수정은 이 키를 가진 사람만 가능하다.
+ * 4. 사이트에서 /#/admin 으로 들어가 관리자 아이디·비밀번호를 만들면 이 서버에 등록된다.
+ *    이후 시간표·시험·노트 수정은 그 계정으로 로그인한 사람만 가능하다.
+ *    (비밀번호는 해시로만 보관하고, 로그인 실패가 잦으면 잠시 막는다)
  *
  * 저장 위치 : 스프레드시트와 드라이브 폴더를 자동으로 만든다.
  * 익명성 : 글쓴이 이름·계정은 저장하지 않는다. 좋아요 중복 방지용 기기 식별자만 해시로 보관.
@@ -21,6 +22,10 @@
 
 var MAX_LEN = 300;              // 건의 글자 수 제한
 var MAX_FILE_MB = 8;            // 노트 첨부 파일 최대 용량
+var MIN_ID = 3;                 // 관리자 아이디 최소 길이
+var MIN_PW = 6;                 // 관리자 비밀번호 최소 길이
+var MAX_FAILS = 5;              // 로그인 실패 허용 횟수
+var FAIL_WINDOW_MIN = 10;       // 실패 기록이 풀리는 시간(분)
 
 function doGet() {
   return json({ ok: true, message: '스케줄 공용 서버가 동작 중입니다.' });
@@ -49,9 +54,15 @@ function doPost(e) {
       case 'add':  return json({ ok: true, item: addSuggestion(body, device) });
       case 'like': return json({ ok: true, liked: toggleLike(String(body.id), device) });
 
+      /* --- 관리자 계정 --- */
+      case 'adminStatus':   return json({ ok: true, registered: !!props().getProperty('ADMIN_KEY') });
+      case 'adminLogin':    return json({ ok: true, admin: adminLogin(body, device) });
+      case 'adminRegister': return json({ ok: true, registered: adminRegister(body) });
+      case 'setAdminCred':  return needAdmin(admin) || json({ ok: true, changed: setAdminCred(body) });
+      case 'claimAdmin':    return json({ ok: true, claimed: claimAdmin(body.adminKey) });   // 예전 버전 호환
+      case 'checkAdmin':    return json({ ok: true, admin: admin });
+
       /* --- 관리자 전용 --- */
-      case 'claimAdmin':  return json({ ok: true, claimed: claimAdmin(body.adminKey) });
-      case 'checkAdmin':  return json({ ok: true, admin: admin });
       case 'saveContent': return needAdmin(admin) || json({ ok: true, content: saveContent(body.content) });
       case 'addNote':     return needAdmin(admin) || json({ ok: true, note: addNote(body) });
       case 'removeNote':  return needAdmin(admin) || json({ ok: true, removed: removeNote(String(body.id)) });
@@ -67,11 +78,90 @@ function doPost(e) {
   }
 }
 
-/* ── 관리자 키 ───────────────────────────────────────────── */
+/* ── 관리자 계정 ─────────────────────────────────────────── */
 
 function props() { return PropertiesService.getScriptProperties(); }
 
-/** 키가 아직 없으면 처음 보낸 값을 관리자 키로 등록한다. */
+/** 아이디·비밀번호 확인. 맞으면 true, 틀리면 예외.
+ *  아이디가 아직 없는 서버(예전 버전에서 키만 등록한 경우)라면 이번 아이디를 등록한다. */
+function adminLogin(body, device) {
+  guardFails(device);
+
+  var id = String(body.adminId || '').trim();
+  var savedId = props().getProperty('ADMIN_ID');
+  var okKey = isAdmin(body.adminKey);
+  var okId = !savedId || savedId === id;
+
+  if (!okKey || !okId) {
+    noteFail(device);
+    throw new Error('아이디 또는 비밀번호가 맞지 않습니다.');
+  }
+  if (!savedId && id) props().setProperty('ADMIN_ID', id);
+  clearFails(device);
+  return true;
+}
+
+/** 관리자 계정 만들기 — 아직 아무도 등록하지 않았을 때만 */
+function adminRegister(body) {
+  var id = String(body.adminId || '').trim();
+  var key = String(body.adminKey || '');
+  if (id.length < MIN_ID) throw new Error('아이디는 ' + MIN_ID + '자 이상이어야 합니다.');
+  if (key.length < MIN_PW) throw new Error('비밀번호는 ' + MIN_PW + '자 이상이어야 합니다.');
+  if (props().getProperty('ADMIN_KEY')) throw new Error('이미 관리자 계정이 있습니다. 로그인해 주세요.');
+
+  props().setProperty('ADMIN_ID', id);
+  props().setProperty('ADMIN_KEY', hash(key));
+  return true;
+}
+
+/** 아이디·비밀번호 바꾸기 (비밀번호가 비면 아이디만) — 지금 관리자만 부를 수 있다 */
+function setAdminCred(body) {
+  var id = String(body.adminId || '').trim();
+  var key = String(body.newKey || '');
+  if (id.length < MIN_ID) throw new Error('아이디는 ' + MIN_ID + '자 이상이어야 합니다.');
+  if (key && key.length < MIN_PW) throw new Error('비밀번호는 ' + MIN_PW + '자 이상이어야 합니다.');
+
+  props().setProperty('ADMIN_ID', id);
+  if (key) props().setProperty('ADMIN_KEY', hash(key));
+  return true;
+}
+
+/* 로그인 실패 기록 — 기기별로 세어 두고, 너무 잦으면 잠시 막는다 */
+
+function readFails() {
+  try { return JSON.parse(props().getProperty('LOGIN_FAILS') || '{}'); } catch (e) { return {}; }
+}
+
+function saveFails(map) {
+  var now = Date.now();
+  Object.keys(map).forEach(function (k) {
+    if (now - map[k].at > FAIL_WINDOW_MIN * 60000) delete map[k];   // 오래된 기록은 버린다
+  });
+  props().setProperty('LOGIN_FAILS', JSON.stringify(map));
+}
+
+function guardFails(device) {
+  var f = readFails()[device];
+  if (f && f.n >= MAX_FAILS && Date.now() - f.at <= FAIL_WINDOW_MIN * 60000) {
+    throw new Error('로그인 시도가 너무 많습니다. ' + FAIL_WINDOW_MIN + '분 후 다시 시도해 주세요.');
+  }
+}
+
+function noteFail(device) {
+  var map = readFails();
+  var f = map[device];
+  var fresh = f && Date.now() - f.at <= FAIL_WINDOW_MIN * 60000;
+  map[device] = { n: (fresh ? f.n : 0) + 1, at: Date.now() };
+  saveFails(map);
+}
+
+function clearFails(device) {
+  var map = readFails();
+  delete map[device];
+  saveFails(map);
+}
+
+/** 키가 아직 없으면 처음 보낸 값을 관리자 키로 등록한다. (예전 버전 사이트 호환) */
 function claimAdmin(key) {
   key = String(key || '').trim();
   if (key.length < 6) throw new Error('관리자 키는 6자 이상이어야 합니다.');
@@ -87,7 +177,7 @@ function isAdmin(key) {
 }
 
 function needAdmin(ok) {
-  return ok ? null : json({ ok: false, error: '관리자만 할 수 있는 작업입니다. 관리자 키를 확인해 주세요.' });
+  return ok ? null : json({ ok: false, error: '관리자만 할 수 있는 작업입니다. 다시 로그인해 주세요.' });
 }
 
 /* ── 저장소 ──────────────────────────────────────────────── */

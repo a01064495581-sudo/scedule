@@ -1,6 +1,6 @@
 /* 앱 셸 — 해시 라우팅, 모바일 탭바/데스크톱 사이드바, 테마, FAB */
 import {
-  ADMIN_CODE, state, applyTheme, getThemePref, isAdmin, setAdmin, setThemePref, upcomingAssessments,
+  ADMIN_PATH, state, applyTheme, getThemePref, isAdmin, setThemePref, upcomingAssessments,
 } from './store.js';
 import { isShared, pull } from './server.js';
 import { el, fmtFull, icon, toast } from './utils.js';
@@ -13,10 +13,13 @@ import examsView from './views/exams.js';
 import notesView from './views/notes.js';
 import suggestionsView from './views/suggestions.js';
 import settingsView from './views/settings.js';
+import loginView from './views/login.js';
 
 /**
  * tab      : 모바일 하단 탭바에 노출할 대표 화면 (시험은 '평가' 탭에 묶인다)
  * sidebar  : 데스크톱 사이드바 노출 여부
+ * path     : 주소창에 쓸 이름 (없으면 id 그대로)
+ * section  : 화면 색상 테마 키 (없으면 id 그대로)
  */
 const ROUTES = [
   { id: 'today', label: '오늘', icon: 'today', view: todayView, tab: 'today', sidebar: true },
@@ -29,8 +32,9 @@ const ROUTES = [
   { id: 'exams', label: '시험', sidebarLabel: '정기시험', icon: 'exam', view: examsView, tab: 'assessments', sidebar: true },
   { id: 'notes', label: '노트', sidebarLabel: '요점정리', icon: 'note', view: notesView, tab: 'notes', sidebar: true },
   { id: 'suggestions', label: '건의', sidebarLabel: '건의사항', icon: 'megaphone', view: suggestionsView, tab: 'suggestions', sidebar: true },
-  // 설정(관리자 패널)은 12자리 주소를 아는 사람만 들어온다.
-  { id: 'settings', label: '설정', icon: 'settings', view: settingsView, tab: null, sidebar: false },
+  // 관리자 패널 — #/admin 에서 아이디·비밀번호로 로그인해야 열린다.
+  { id: 'settings', label: '설정', icon: 'settings', view: settingsView, tab: null, sidebar: false, path: 'admin' },
+  { id: 'login', label: '관리자 로그인', icon: 'lock', view: loginView, tab: null, sidebar: false, path: 'admin', section: 'settings' },
 ];
 
 const TABS = ['today', 'meal', 'timetable', 'assessments', 'notes', 'suggestions'];
@@ -38,15 +42,12 @@ const TABS = ['today', 'meal', 'timetable', 'assessments', 'notes', 'suggestions
 const routeId = () => {
   const id = location.hash.replace(/^#\/?/, '');
 
-  // 관리자 주소로 들어오면 이 기기를 관리자로 기억한다.
-  if (id === ADMIN_CODE) {
-    setAdmin(true);
-    return 'settings';
+  // 관리자 패널은 로그인해야 열린다. 로그인 전에는 같은 주소에서 로그인 화면이 뜬다.
+  if (id === ADMIN_PATH || id === 'settings' || id === 'login') {
+    return isAdmin() ? 'settings' : 'login';
   }
-  // 잠금 해제 전에는 설정 화면을 열 수 없다.
-  if (id === 'settings' && !isAdmin()) return 'today';
 
-  return ROUTES.some((r) => r.id === id) ? id : 'today';
+  return ROUTES.some((r) => r.id === id && r.id !== 'login') ? id : 'today';
 };
 
 /**
@@ -57,7 +58,7 @@ const navItem = (r, route, { compact = false } = {}) => {
   const badge = r.badge?.() || 0;
   const active = compact ? r.tab === route.tab : r.id === route.id;
   const label = compact ? r.label : (r.sidebarLabel || r.label);
-  return `<a class="nav__item ${active ? 'is-active' : ''}" href="#/${r.id}">
+  return `<a class="nav__item ${active ? 'is-active' : ''}" href="#/${r.path || r.id}">
     ${icon[r.icon]}<span>${label}</span>
     ${badge ? `<span class="nav__badge">${badge}</span>` : ''}
   </a>`;
@@ -94,7 +95,7 @@ function render() {
   const route = ROUTES.find((r) => r.id === routeId());
   const view = route.view;
 
-  document.body.dataset.section = route.id;
+  document.body.dataset.section = route.section || route.id;
   document.title = `${view.title} · 스케줄`;
   el('#topbarTitle').textContent = view.title;
   el('#topbarDate').textContent = state.school
@@ -107,7 +108,7 @@ function render() {
     + `<button type="button" class="icon-btn" id="themeQuick"
          aria-label="테마 전환 (현재 ${dark ? '다크' : '라이트'})">${dark ? icon.sun : icon.moon}</button>`
     + (isAdmin() && route.id !== 'settings'
-      ? `<a class="icon-btn mob-only" href="#/settings" aria-label="관리자 설정">${icon.settings}</a>` : '');
+      ? `<a class="icon-btn mob-only" href="#/${ADMIN_PATH}" aria-label="관리자 설정">${icon.settings}</a>` : '');
 
   renderNav(route);
   renderFab(view);
