@@ -69,12 +69,20 @@ export const fmtDate = (s, opts = {}) => {
 export const fmtFull = (d) =>
   `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${DOW[d.getDay()]}요일`;
 
-/** 현재 학년도·학기 추정 (3~8월 1학기, 그 외 2학기) */
-export const currentTerm = () => {
-  const d = new Date();
+/** 그 날짜가 속한 학년도·학기 추정
+ *  학년도는 3월에 바뀌고, 2학기는 여름방학이 끝나는 8월 16일쯤 시작한다고 본다.
+ *  (8월 전체를 1학기로 보면 개학 직후에 지난 학기 시간표를 현재 것으로 착각한다) */
+export const termOf = (d = new Date()) => {
   const m = d.getMonth() + 1;
-  return { year: m < 3 ? d.getFullYear() - 1 : d.getFullYear(), semester: m >= 3 && m <= 8 ? 1 : 2 };
+  const first = m >= 3 && (m < 8 || (m === 8 && d.getDate() < 16));
+  return { year: m < 3 ? d.getFullYear() - 1 : d.getFullYear(), semester: first ? 1 : 2 };
 };
+
+/** 오늘 기준 학년도·학기 */
+export const currentTerm = () => termOf(new Date());
+
+export const termKey = (t) => `${t.year}-${t.semester}`;
+export const termLabel = (t) => `${t.year}학년도 ${t.semester}학기`;
 
 /** ISO 시각 → '방금 전 / 12분 전 / 3시간 전 / 어제 / 8월 3일' */
 export const fromNow = (isoStr) => {
