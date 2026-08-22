@@ -5,7 +5,7 @@ import { getClasses, getTimetable } from '../data.js';
 import { card, openModal } from '../ui.js';
 import {
   addDays, currentTerm, el, esc, icon, parseDate, startOfWeek,
-  subjectColor, toast, today, ymd,
+  subjectColor, termKey, termLabel, termOf, toast, today, ymd,
 } from '../utils.js';
 
 export const DAYS = ['월', '화', '수', '목', '금'];
@@ -199,8 +199,9 @@ function importFromNeis() {
         </select>
       </div>
       <p class="hint span-2" id="ttImportHint">
-        이번 주 시간표를 불러와 표를 덮어씁니다. 이번 주에 등록된 것이 없으면
-        가장 최근에 수업이 있던 주를 자동으로 찾아옵니다.
+        이번 주 시간표를 불러와 표를 덮어씁니다. 방학이라 이번 주에 수업이 없으면
+        이번 학기에 등록된 가장 가까운 주를 찾아옵니다.
+        이번 학기 시간표가 아직 나이스에 없으면 먼저 물어봅니다.
       </p>
     </div>`,
     onSubmit: (v) => {
@@ -253,66 +254,130 @@ async function fillClassPickers() {
   }
 }
 
-/** 이번 주 → 없으면 최근 10주 안에서 수업이 있던 주를 찾아 가져온다 */
+/** 나이스 행이 속한 학년도·학기 (AY/SEM 이 비면 날짜로 추정) */
+const lessonTerm = (l) => (l.year && l.semester
+  ? { year: Number(l.year), semester: Number(l.semester) }
+  : termOf(parseDate(l.date)));
+
+/** 이번 주 → 없으면 앞뒤로 훑어 실제 수업이 있는 주를 찾는다.
+ *
+ *  방학·개학 직후에는 이번 주에 등록된 수업이 없다. 이때 지난 주만 뒤지면 지난 학기 시간표가
+ *  현재 시간표인 척 들어오므로, 앞으로 등록된 주(다음 학기 시작)를 먼저 찾고
+ *  그것도 없을 때만 지난 주로 내려간다. 어느 학기 것인지는 호출한 쪽에 알려 준다.
+ */
 async function fetchWeek(grade, classNm) {
   const monday = startOfWeek(today());
+  const now = termOf(today());
   const week = (base) => getTimetable({
     grade, classNm, from: ymd(base), to: ymd(addDays(base, 4)),
   });
+  const isNow = (l) => termKey(lessonTerm(l)) === termKey(now);
 
   const thisWeek = await week(monday);
-  if (thisWeek?.lessons.length) return { res: thisWeek, monday, fallback: false };
+  if (thisWeek?.lessons.some(isNow)) {
+    return { res: { ...thisWeek, lessons: thisWeek.lessons.filter(isNow) }, monday, term: now, mode: 'this' };
+  }
 
-  // 최근 10주를 한 번에 훑어 가장 최근 수업일을 찾는다.
+  // 지난 8주 ~ 앞으로 8주를 한 번에 훑는다.
   const wide = await getTimetable({
-    grade, classNm, from: ymd(addDays(monday, -70)), to: ymd(addDays(monday, 4)),
+    grade, classNm, from: ymd(addDays(monday, -56)), to: ymd(addDays(monday, 60)),
   });
-  if (!wide?.lessons.length) return null;
+  const lessons = wide?.lessons || [];
+  if (!lessons.length) return null;
 
-  const latest = wide.lessons.map((l) => l.date).sort().at(-1);
-  const base = startOfWeek(parseDate(latest));
+  // 이번 학기 수업이 하나라도 있으면 그 안에서만 고른다.
+  const pool = lessons.some(isNow) ? lessons.filter(isNow) : lessons;
+  const todayStr = ymd(today());
+  const dates = [...new Set(pool.map((l) => l.date))].sort();
+  const target = dates.find((d) => d >= todayStr) ?? dates.at(-1);
+  const base = startOfWeek(parseDate(target));
+  const term = lessonTerm(pool.find((l) => l.date === target));
+  const sameTerm = (l) => termKey(lessonTerm(l)) === termKey(term);
+
+  // 인증키가 없으면 넓은 조회가 5건에서 잘리므로, 고른 주만 다시 받아 온다.
   const res = await week(base);
-  return { res: res?.lessons.length ? res : wide, monday: base, fallback: true };
+  const picked = res?.lessons.filter(sameTerm) || [];
+  const from = ymd(base);
+  const to = ymd(addDays(base, 4));
+
+  return {
+    res: picked.length
+      ? { ...res, lessons: picked }
+      : { ...wide, lessons: pool.filter((l) => sameTerm(l) && l.date >= from && l.date <= to) },
+    monday: base,
+    term,
+    mode: target >= todayStr ? 'ahead' : 'back',
+  };
 }
 
 async function runImport(v) {
   toast('나이스에서 시간표를 불러오는 중…');
   try {
     const found = await fetchWeek(v.grade, v.classNm);
-    if (!found) {
+    if (!found || !found.res.lessons.length) {
       toast(`${v.grade}학년 ${v.classNm}반 시간표가 나이스에 없습니다. 직접 입력해 주세요.`);
       return;
     }
 
-    const { res, monday, fallback } = found;
-    const next = {};
-    let maxPeriod = 0;
-    for (const r of res.lessons) {
-      const d = parseDate(r.date);
-      if (!d) continue;
-      const day = (d.getDay() + 6) % 7;
-      if (day > 4) continue;
-      maxPeriod = Math.max(maxPeriod, r.period);
-      next[cellKey(day, r.period - 1)] = { subject: r.subject, room: r.room || '', teacher: '' };
-    }
-    if (!Object.keys(next).length) {
-      toast('가져온 수업이 없습니다. 직접 입력해 주세요.');
+    const now = termOf(today());
+    // 이번 학기 것이 아직 등록되지 않았다면 지난 학기 시간표를 말없이 덮어쓰지 않는다.
+    if (termKey(found.term) !== termKey(now)) {
+      confirmOldTerm(found, now);
       return;
     }
-
-    state.timetable = next;
-    state.periods = Math.max(state.periods, Math.min(12, maxPeriod));
-    while (state.bells.length < state.periods) state.bells.push(['', '']);
-    push();
-    document.dispatchEvent(new CustomEvent('scedule:rerender'));
-
-    const when = `${monday.getMonth() + 1}월 ${monday.getDate()}일 주`;
-    toast([
-      `${Object.keys(next).length}개 수업을 가져왔습니다.`,
-      fallback ? `이번 주는 등록 전이라 ${when} 시간표를 불러왔어요.` : '',
-      res.truncated ? '인증키를 등록하면 전체를 가져올 수 있어요.' : '',
-    ].filter(Boolean).join(' '));
+    applyWeek(found);
   } catch (e) {
     toast(e.message || '시간표를 가져오지 못했습니다.');
   }
+}
+
+const weekLabel = (monday) => `${monday.getMonth() + 1}월 ${monday.getDate()}일 주`;
+
+/** 지난 학기 시간표뿐일 때 — 무엇을 넣는지 알리고 확인을 받는다 */
+function confirmOldTerm(found, now) {
+  const when = weekLabel(found.monday);
+  openModal({
+    title: `${termLabel(now)} 시간표가 아직 없어요`,
+    submitLabel: '지난 학기 것으로 채우기',
+    body: `<p style="font-size:14px;color:var(--text-2);line-height:1.6">
+      나이스에 ${esc(termLabel(now))} 시간표가 아직 등록되지 않았습니다.
+      가장 가까운 건 <strong>${esc(termLabel(found.term))} ${esc(when)}</strong> 시간표예요.<br>
+      이걸로 채워 두고 나중에 다시 가져오거나, 지금 셀을 눌러 직접 입력할 수 있습니다.</p>`,
+    onSubmit: () => { applyWeek(found, { oldTerm: true }); },
+  });
+}
+
+/** 가져온 한 주를 표에 채운다 */
+function applyWeek({ res, monday, term, mode }, { oldTerm = false } = {}) {
+  const next = {};
+  let maxPeriod = 0;
+  for (const r of res.lessons) {
+    const d = parseDate(r.date);
+    if (!d) continue;
+    const day = (d.getDay() + 6) % 7;
+    if (day > 4) continue;
+    maxPeriod = Math.max(maxPeriod, r.period);
+    next[cellKey(day, r.period - 1)] = { subject: r.subject, room: r.room || '', teacher: '' };
+  }
+  if (!Object.keys(next).length) {
+    toast('가져온 수업이 없습니다. 직접 입력해 주세요.');
+    return;
+  }
+
+  state.timetable = next;
+  state.periods = Math.max(state.periods, Math.min(12, maxPeriod));
+  while (state.bells.length < state.periods) state.bells.push(['', '']);
+  push();
+  document.dispatchEvent(new CustomEvent('scedule:rerender'));
+
+  const when = weekLabel(monday);
+  const note = oldTerm ? `${termLabel(term)} ${when} 시간표입니다.`
+    : mode === 'ahead' ? `이번 주는 수업이 없어 ${when} 시간표를 불러왔어요.`
+    : mode === 'back' ? `가장 최근 수업이 있던 ${when} 시간표입니다.`
+    : '';
+  toast([
+    `${Object.keys(next).length}개 수업을 가져왔습니다.`,
+    note,
+    res.truncated ? '인증키를 등록하면 전체를 가져올 수 있어요.' : '',
+  ].filter(Boolean).join(' '));
 }
